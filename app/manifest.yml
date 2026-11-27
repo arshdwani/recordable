@@ -1,0 +1,264 @@
+modules:
+  jira:globalPage:
+    - key: recordable-desk
+      resource: board
+      resolver:
+        function: resolver
+      render: native
+      title: Recordable
+      icon: resource:static;icon.svg
+  jira:issueContext:
+    - key: recordable-context
+      resource: panel
+      resolver:
+        function: resolver
+      render: native
+      title: Recordable
+      label: OSHA recordkeeping
+      description: Is this injury or illness recordable under 29 CFR 1904, the rule behind each step, the OSHA report clock and the 300 log entry.
+      dynamicProperties:
+        function: context-status
+      displayConditions:
+        entityPropertyExists:
+          entity: issue
+          propertyKey: recordable
+  jira:issuePanel:
+    - key: recordable-panel
+      resource: panel
+      resolver:
+        function: resolver
+      render: native
+      title: Injury or illness (OSHA)
+      icon: resource:static;icon.svg
+      displayConditions:
+        entityPropertyExists:
+          entity: issue
+          propertyKey: recordable
+  jiraServiceManagement:portalRequestCreatePropertyPanel:
+    - key: recordable-portal
+      resource: portal
+      resolver:
+        function: resolver
+      render: native
+      unlicensedAccess:
+        - customer
+        - unlicensed
+  jira:issueAction:
+    - key: recordable-treat
+      resource: action
+      resolver:
+        function: resolver
+      render: native
+      title: Treat as injury or illness
+      viewportSize: medium
+  jira:entityProperty:
+    - key: recordable-jql
+      entityType: issue
+      propertyKey: recordable
+      values:
+        - path: status
+          type: string
+          searchAlias: oshaStatus
+        - path: decision
+          type: string
+          searchAlias: oshaDecision
+        - path: recordBy
+          type: date
+          searchAlias: oshaRecordBy
+        - path: caseNo
+          type: string
+          searchAlias: oshaCaseNo
+  trigger:
+    - key: recordable-created
+      function: on-created
+      events:
+        - avi:jira:created:issue
+        - avi:jira:deleted:issue
+  scheduledTrigger:
+    - key: recordable-alerts
+      function: on-schedule
+      interval: hour
+    - key: recordable-privacy
+      function: on-privacy
+      interval: week
+  rovo:agent:
+    - key: recordable-agent
+      name: Recordable
+      description: Decides whether work injuries and illnesses are OSHA-recordable under 29 CFR 1904, with citations; tracks OSHA reporting and 300 log deadlines and incidence rates.
+      icon: resource:static;icon.svg
+      prompt: resource:prompts;agent.md
+      conversationStarters:
+        - Is this recordable? He got 3 stitches and went back to work the same day.
+        - What's our DART rate at Plant 2?
+        - What must we report to OSHA or log this week?
+      actions:
+        - check-recordable
+        - get-rates
+        - get-open-cases
+        - log-case
+        - record-days
+      skills:
+        - osha-week
+  rovo:skill:
+    - key: osha-week
+      source:
+        dir: skills/osha-week
+      dependencies:
+        tools:
+          - get-open-cases
+          - get-rates
+          - check-recordable
+  action:
+    - key: check-recordable
+      name: Check recordability
+      function: action-check
+      actionVerb: GET
+      description: Decides whether an injury or illness is OSHA-recordable (29 CFR 1904) from a request key or a description, with the reasons and citations, open questions, and any OSHA report due.
+      inputs:
+        issueKey:
+          title: Request key
+          type: string
+          required: false
+          description: The injury or illness request key, e.g. HR-12. Leave empty to describe a case instead.
+        description:
+          title: What happened
+          type: string
+          required: false
+          description: The injury, the treatment given (e.g. stitches, butterfly strips, prescription), days away or restricted work, and how it happened.
+        workRelated:
+          title: Work-related
+          type: string
+          required: false
+          description: no if it did not happen at work or while working; leave empty otherwise.
+    - key: get-rates
+      name: Get incidence rates
+      function: action-rates
+      actionVerb: GET
+      description: Total recordable case rate and DART rate per establishment for a year, with the case counts and hours worked behind them.
+      inputs:
+        establishment:
+          title: Establishment
+          type: string
+          required: false
+          description: Establishment name or part of it, e.g. Plant 2. Leave empty for all.
+        year:
+          title: Year
+          type: string
+          required: false
+          description: The calendar year, e.g. 2026. Defaults to this year.
+    - key: get-open-cases
+      name: Get open cases
+      function: action-open
+      actionVerb: GET
+      description: Open injury and illness cases - events to report to OSHA now, recordable cases not yet on the 300 log, cases waiting for answers, and employees still away.
+      inputs:
+        establishment:
+          title: Establishment
+          type: string
+          required: false
+          description: Establishment name or part of it. Leave empty for all.
+    - key: log-case
+      name: Enter a case on the 300 log
+      function: action-log
+      actionVerb: UPDATE
+      description: Enters a recordable case on its establishment's OSHA 300 log with the next case number and attaches the Form 301 equivalent to the request.
+      inputs:
+        issueKey:
+          title: Request key
+          type: string
+          required: true
+          description: The request key, e.g. HR-12.
+    - key: record-days
+      name: Record days away or restricted
+      function: action-days
+      actionVerb: UPDATE
+      description: Updates a case's days away from work or days of restricted work, as counts or as the date the employee came back or resumed full duty.
+      inputs:
+        issueKey:
+          title: Request key
+          type: string
+          required: true
+          description: The request key, e.g. HR-12.
+        daysAway:
+          title: Days away
+          type: string
+          required: false
+          description: Calendar days away from work, not counting the day of injury.
+        daysRestricted:
+          title: Days restricted
+          type: string
+          required: false
+          description: Calendar days of restricted work or job transfer.
+        backAtWorkOn:
+          title: Back at work on
+          type: string
+          required: false
+          description: The date the employee came back to work, as YYYY-MM-DD.
+        fullDutyOn:
+          title: Full duty on
+          type: string
+          required: false
+          description: The date the employee went back to full duty, as YYYY-MM-DD.
+  function:
+    - key: resolver
+      handler: index.handler
+    - key: on-created
+      handler: index.onIssueCreated
+    - key: on-schedule
+      handler: index.onSchedule
+      timeoutSeconds: 300
+    - key: on-privacy
+      handler: index.onPrivacy
+      timeoutSeconds: 300
+    - key: context-status
+      handler: index.contextStatus
+    - key: action-check
+      handler: index.checkRecordable
+    - key: action-rates
+      handler: index.getRates
+    - key: action-open
+      handler: index.getOpenCases
+    - key: action-log
+      handler: index.logCaseAction
+    - key: action-days
+      handler: index.recordDays
+resources:
+  - key: board
+    path: src/frontend/board.jsx
+  - key: panel
+    path: src/frontend/panel.jsx
+  - key: portal
+    path: src/frontend/portal.jsx
+  - key: action
+    path: src/frontend/action.jsx
+  - key: prompts
+    path: prompts
+  - key: static
+    path: static
+permissions:
+  scopes:
+    - read:jira-work
+    - write:jira-work
+    - read:jira-user
+    - storage:app
+    - read:servicedesk-request
+    - write:servicedesk-request
+    - read:requesttype:jira-service-management
+    - write:requesttype:jira-service-management
+    - read:servicemanagement-insight-objects
+    - read:cmdb-object:jira
+    - write:cmdb-object:jira
+    - delete:cmdb-object:jira
+    - read:cmdb-schema:jira
+    - write:cmdb-schema:jira
+    - read:cmdb-type:jira
+    - write:cmdb-type:jira
+    - read:cmdb-attribute:jira
+    - write:cmdb-attribute:jira
+    - read:cmdb-icon:jira
+app:
+  runtime:
+    name: nodejs24.x
+    memoryMB: 256
+    architecture: arm64
+  id: ari:cloud:ecosystem::app/6dcac9f3-8e0d-48c1-80d5-0088740349a2

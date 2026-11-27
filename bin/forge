@@ -1,0 +1,16 @@
+#!/bin/sh
+# Forge CLI launcher for this project.
+# - Runs the CLI on Node 24 (Forge supports Node 22/24).
+# - Uses the macOS root certificates for TLS (some Homebrew Node builds can't verify certificates otherwise).
+# - Optionally reads credentials from ~/.config/forge/{email,token} instead of the macOS Keychain.
+#   Nothing in this repo reads or prints them; Forge uses FORGE_EMAIL + FORGE_API_TOKEN when both are set.
+NODE24="/opt/homebrew/opt/node@24/bin"
+[ -d "$NODE24" ] && export PATH="$NODE24:$PATH"
+[ -f "$HOME/.config/node-roots.pem" ] && export NODE_EXTRA_CA_CERTS="$HOME/.config/node-roots.pem"
+if [ -s "$HOME/.config/forge/token" ] && [ -s "$HOME/.config/forge/email" ]; then
+  FORGE_EMAIL="$(tr -d ' \r\n' < "$HOME/.config/forge/email")"
+  FORGE_API_TOKEN="$(tr -d ' \r\n' < "$HOME/.config/forge/token")"
+  export FORGE_EMAIL FORGE_API_TOKEN
+fi
+if [ -x "$HOME/.forge-cli/bin/forge" ]; then exec "$HOME/.forge-cli/bin/forge" "$@"; fi
+exec forge "$@"
